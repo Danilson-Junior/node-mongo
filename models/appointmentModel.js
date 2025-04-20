@@ -6,7 +6,11 @@ const appointmentSchema = new mongoose.Schema({
     ref: 'Client',
     required: true,
   },
-  date: {
+  startDate: {
+    type: Date,
+    required: true,
+  },
+  endDate: {
     type: Date,
     required: true,
   },
@@ -28,6 +32,6 @@ const appointmentSchema = new mongoose.Schema({
   },
 });
 
-const Schedule = mongoose.model('Appointment', appointmentSchema);
+const Appointment = mongoose.model('Appointment', appointmentSchema);
 
-module.exports = Schedule;
+module.exports = Appointment;

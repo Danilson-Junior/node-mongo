@@ -1,10 +1,24 @@
 const Appointment = require('../models/appointmentModel');
 const Client = require('../models/clientModel');
 
+const checkAppointmentConflict = async (startDate, endDate, excludeAppointmentId = null) => {
+  const conflictQuery = {
+    startDate: { $lt: new Date(endDate) },
+    endDate: { $gt: new Date(startDate) }
+  };
+
+  if (excludeAppointmentId) {
+    conflictQuery._id = { $ne: excludeAppointmentId }; // Ignora o próprio agendamento (em caso de edição)
+  }
+
+  const conflict = await Appointment.findOne({ $or: [conflictQuery] }).populate('client', 'name phone cpf');
+  return conflict;
+};
+
 // Criar agendamento
 const createAppointment = async (req, res) => {
   try {
-    const { clientName, date, service, price, paymentMethod, observations } = req.body;
+    const { clientName, startDate, endDate, service, price, paymentMethod, observations } = req.body;
 
     // Verificando se o cliente existe pelo nome
     const client = await Client.findOne({ name: clientName });
@@ -12,10 +26,24 @@ const createAppointment = async (req, res) => {
       return res.status(404).json({ message: 'Cliente não encontrado' });
     }
 
+    // Verifica conflitos de horário
+    const conflict = await checkAppointmentConflict(startDate, endDate);
+    if (conflict) {
+      return res.status(400).json({
+        message: `Já existe um agendamento para ${conflict.client.name} entre ${new Date(conflict.startDate).toLocaleTimeString()} e ${new Date(conflict.endDate).toLocaleTimeString()}.`,
+        conflictAppointment: conflict
+      });
+    }
+
+
+
+
+
     // Criando o agendamento com o ID do cliente
     const newAppointment = new Appointment({
       client: client._id, // Associando o ID do cliente ao agendamento
-      date,
+      startDate,
+      endDate,
       service,
       price,
       paymentMethod,
@@ -65,7 +93,7 @@ const getAppointmentById = async (req, res) => {
 const updateAppointment = async (req, res) => {
   try {
     const { id } = req.params;
-    const { clientName, date, service, price, paymentMethod, observations } = req.body;
+    const { clientName, startDate, endDate, service, price, paymentMethod, observations } = req.body;
 
     // Verificando se o cliente existe pelo nome
     const client = await Client.findOne({ name: clientName });
@@ -79,9 +107,18 @@ const updateAppointment = async (req, res) => {
       return res.status(404).json({ message: 'Agendamento não encontrado' });
     }
 
+    const conflict = await checkAppointmentConflict(startDate, endDate, id);
+    if (conflict) {
+      return res.status(400).json({
+        message: `Já existe um agendamento para ${conflict.client.name} entre ${new Date(conflict.startDate).toLocaleTimeString()} e ${new Date(conflict.endDate).toLocaleTimeString()}.`,
+        conflictAppointment: conflict
+      });
+    }
+
     // Atualizando os dados do agendamento
     appointment.client = client._id; // Associando o ID do cliente ao agendamento
-    appointment.date = date;
+    appointment.startDate = startDate;
+    appointment.endDate = endDate;
     appointment.service = service;
     appointment.price = price;
     appointment.paymentMethod = paymentMethod;
