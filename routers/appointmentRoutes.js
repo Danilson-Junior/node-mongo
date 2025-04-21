@@ -1,4 +1,6 @@
 const { Router } = require('express');
+const authMiddleware = require('../middleware/authMiddleware');
+
 const {
   getAllAppointments,
   getAppointmentById,
@@ -9,19 +11,12 @@ const {
 
 const router = Router();
 
-// Listar todos os agendamentos
-router.get('/appointment', getAllAppointments);
+router.use(authMiddleware);
 
-// Buscar um agendamento por ID
-router.get('/appointment/:id', getAppointmentById);
-
-// Criar um novo agendamento
-router.post('/appointment', createAppointment);
-
-// Atualizar um agendamento
-router.put('/appointment/:id', updateAppointment);
-
-// Excluir um agendamento
-router.delete('/appointment/:id', deleteAppointment);
+router.get('/', getAllAppointments);
+router.get('/:id', getAppointmentById);
+router.post('/', createAppointment);
+router.put('/:id', updateAppointment);
+router.delete('/:id', deleteAppointment);
 
 module.exports = router;

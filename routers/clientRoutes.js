@@ -1,4 +1,7 @@
 const { Router } = require('express');
+const authMiddleware = require('../middleware/authMiddleware');
+
+
 const {
   getAllClients,
   getClientById,
@@ -7,12 +10,15 @@ const {
   deleteClient,
 } = require('../controllers/clientController');
 
+
 const router = Router();
 
-router.get('/client', getAllClients);
-router.get('/client/:id', getClientById);
-router.post('/client', createClient);
-router.put('/client/:id', updateClient);
-router.delete('/client/:id', deleteClient);
+router.use(authMiddleware); // protege todas as rotas abaixo
+
+router.get('/', getAllClients);
+router.get('/:id', getClientById);
+router.post('/', createClient);
+router.put('/:id', updateClient);
+router.delete('/:id', deleteClient);
 
 module.exports = router;
