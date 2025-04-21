@@ -3,7 +3,7 @@ const Client = require('../models/clientModel');
 // Buscar todos os clientes
 const getAllClients = async (req, res) => {
   try {
-    const clients = await Client.find();
+    const clients = await Client.find({user: req.user.id});
     res.json(clients);
   } catch (error) {
     res
@@ -16,7 +16,7 @@ const getAllClients = async (req, res) => {
 const getClientById = async (req, res) => {
   try {
     const { id } = req.params;
-    const client = await Client.findById(id).populate('appointments'); // Populando os appointments
+    const client = await Client.findOne({_id: id, user: req.user.id}).populate('appointments'); // Populando os appointments
 
     if (!client) {
       return res.status(404).json({ message: 'Cliente não encontrado' });
@@ -40,12 +40,12 @@ const createClient = async (req, res) => {
         .json({ message: 'Preencha todos os campos obrigatórios' });
     }
 
-    const existingClient = await Client.findOne({ cpf });
+    const existingClient = await Client.findOne({ cpf, user: req.user.id });
     if (existingClient) {
       return res.status(409).json({ message: 'CPF já cadastrado' });
     }
 
-    const newClient = new Client({ name, phone, cpf });
+    const newClient = new Client({ name, phone, cpf, user: req.user.id });
     const savedClient = await newClient.save();
 
     res.status(201).json(savedClient);
@@ -68,7 +68,7 @@ const updateClient = async (req, res) => {
         .json({ message: 'Preencha nome e telefone para atualizar' });
     }
 
-    const client = await Client.findById(id);
+    const client = await Client.findOne({_id: id, user: req.user.id});
 
     if (!client) {
       return res.status(404).json({ message: 'Cliente não encontrado' });
@@ -95,7 +95,7 @@ const updateClient = async (req, res) => {
 const deleteClient = async (req, res) => {
   try {
     const { id } = req.params;
-    const deletedClient = await Client.findByIdAndDelete(id);
+    const deletedClient = await Client.findOneAndDelete({_id: id, user: req.user.id});
 
     if (!deletedClient) {
       return res.status(404).json({ message: 'Cliente não encontrado' });

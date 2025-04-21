@@ -3,7 +3,7 @@ const routerClient = require('./clientRoutes');
 const routerAppointment = require('./appointmentRoutes');
 
 module.exports = (app) => {
-  app.use(routerUser);
-  app.use(routerClient);
-  app.use(routerAppointment);
+  app.use('/api/users', routerUser);
+  app.use('/api/clients', routerClient);
+  app.use('/api/appointments', routerAppointment);
 };

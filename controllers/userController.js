@@ -1,22 +1,47 @@
-const bcrypt = require('bcryptjs'); // Em vez de bcrypt
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const User = require('../models/userModel');
 
-// Buscar todos os usuários
-const getAllUsers = async (req, res) => {
+const loginUser = async (req, res) => {
+  const { email, password } = req.body;
+
   try {
-    const users = await User.find().select('-password');
-    res.json(users);
+    // Verifica se o usuário existe
+    const user = await User.findOne({ email }).select('+password'); // Inclui a senha, pois você a ocultou no schema
+
+    if (!user) {
+      return res.status(400).json({ message: 'Usuário não encontrado' });
+    }
+
+    // Compara a senha fornecida com a armazenada no banco
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Senha incorreta' });
+    }
+
+    // Cria o token JWT
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+    // Retorna o token e o nome do usuário
+    return res.status(200).json({ token, name: user.name });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: 'Erro ao buscar usuários', error: error.message });
+    console.error('Erro ao fazer login:', error);
+    return res.status(500).json({ message: 'Erro interno do servidor' });
   }
 };
+
+
 
 // Buscar um usuário pelo ID
 const getUserById = async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (id !== req.user.id.toString()) {
+      return res.status(403).json({ message: 'Você não tem permissão para acessar esses dados' });
+    }
+
     const user = await User.findById(id).select('-password');
 
     if (!user) {
@@ -25,9 +50,7 @@ const getUserById = async (req, res) => {
 
     res.json(user);
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: 'Erro ao buscar usuário', error: error.message });
+    res.status(500).json({ message: 'Erro ao buscar usuário', error: error.message });
   }
 };
 
@@ -37,9 +60,7 @@ const createUser = async (req, res) => {
     const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
-      return res
-        .status(400)
-        .json({ message: 'Preencha todos os campos obrigatórios' });
+      return res.status(400).json({ message: 'Preencha todos os campos obrigatórios' });
     }
 
     const existingUser = await User.findOne({ email });
@@ -47,23 +68,21 @@ const createUser = async (req, res) => {
       return res.status(409).json({ message: 'Email já cadastrado' });
     }
 
-    const newUser = new User({ name, email, password });
+    // Criptografando a senha antes de salvar
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const newUser = new User({ name, email, password: hashedPassword });
     const savedUser = await newUser.save();
 
-    res.status(201).json(savedUser);
+    res.status(201).json({ message: 'Usuário criado com sucesso', user: savedUser });
   } catch (error) {
     if (error.name === 'ValidationError') {
-      const validationErrors = Object.values(error.errors).map(
-        (err) => err.message,
-      );
-      return res
-        .status(400)
-        .json({ message: 'Erro de validação', errors: validationErrors });
+      const validationErrors = Object.values(error.errors).map((err) => err.message);
+      return res.status(400).json({ message: 'Erro de validação', errors: validationErrors });
     }
 
-    res
-      .status(500)
-      .json({ message: 'Erro ao criar usuário', error: error.message });
+    res.status(500).json({ message: 'Erro ao criar usuário', error: error.message });
   }
 };
 
@@ -73,53 +92,42 @@ const updateUser = async (req, res) => {
     const { id } = req.params;
     const { email, password } = req.body;
 
-    // Procurando o usuário pelo ID
+     // Verifica se o usuário autenticado é o mesmo que está tentando atualizar os dados
+     if (id !== req.user.id.toString()) {
+      return res.status(403).json({ message: 'Você não tem permissão para atualizar esses dados' });
+    }
+
     const user = await User.findById(id);
 
     if (!user) {
       return res.status(404).json({ message: 'Usuário não encontrado' });
     }
 
-    // Verificando e atualizando o e-mail, se necessário
     if (email && email !== user.email) {
       const emailExists = await User.findOne({ email });
 
-      // Se o novo e-mail já estiver em uso
       if (emailExists) {
-        return res
-          .status(409)
-          .json({ message: 'E-mail já está em uso por outro usuário' });
+        return res.status(409).json({ message: 'E-mail já está em uso por outro usuário' });
       }
 
-      // Caso o e-mail não exista, faz a atualização
       user.email = email;
     }
 
-    // Verificando e atualizando a senha, se necessário
     if (password) {
-      // Criptografando a nova senha antes de salvar
       const salt = await bcrypt.genSalt(10);
       user.password = await bcrypt.hash(password, salt);
     }
 
-    // Salvando o usuário atualizado
     const updatedUser = await user.save();
 
-    // Retornando a resposta com o usuário atualizado (sem a senha)
     res.json({ message: 'Usuário atualizado com sucesso', user: updatedUser });
   } catch (error) {
     if (error.name === 'ValidationError') {
-      const validationErrors = Object.values(error.errors).map(
-        (err) => err.message,
-      );
-      return res
-        .status(400)
-        .json({ message: 'Erro de validação', errors: validationErrors });
+      const validationErrors = Object.values(error.errors).map((err) => err.message);
+      return res.status(400).json({ message: 'Erro de validação', errors: validationErrors });
     }
 
-    res
-      .status(500)
-      .json({ message: 'Erro ao atualizar usuário', error: error.message });
+    res.status(500).json({ message: 'Erro ao atualizar usuário', error: error.message });
   }
 };
 
@@ -127,6 +135,10 @@ const updateUser = async (req, res) => {
 const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (id !== req.user.id.toString()) {
+      return res.status(403).json({ message: 'Você não tem permissão para excluir sua conta' });
+    }
 
     const deletedUser = await User.findByIdAndDelete(id);
 
@@ -136,14 +148,12 @@ const deleteUser = async (req, res) => {
 
     res.json({ message: 'Usuário excluído com sucesso.', user: deletedUser });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: 'Erro ao excluir o usuário.', error: error.message });
+    res.status(500).json({ message: 'Erro ao excluir o usuário.', error: error.message });
   }
 };
 
 module.exports = {
-  getAllUsers,
+  loginUser,
   getUserById,
   createUser,
   updateUser,

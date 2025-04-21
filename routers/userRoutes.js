@@ -1,6 +1,8 @@
 const { Router } = require('express');
+const authMiddleware = require('../middleware/authMiddleware');
+
 const {
-  getAllUsers,
+  loginUser,
   getUserById,
   createUser,
   updateUser,
@@ -9,10 +11,17 @@ const {
 
 const router = Router();
 
-router.get('/user', getAllUsers);
-router.get('/user/:id', getUserById);
-router.post('/user', createUser);
-router.put('/user/:id', updateUser);
-router.delete('/user/:id', deleteUser);
+// A rota de login não deve ser protegida
+router.post('/login', loginUser);
+
+// A rota de criação de usuário também não deve ser protegida
+router.post('/', createUser);
+
+// Agora, aplica o middleware de autenticação nas rotas que requerem autenticação
+router.use(authMiddleware); // Protege todas as rotas abaixo
+
+router.get('/:id', getUserById);
+router.put('/:id', updateUser);
+router.delete('/:id', deleteUser);
 
 module.exports = router;
