@@ -44,7 +44,6 @@ const clientSchema = new mongoose.Schema({
   cpf: {
     type: String,
     required: [true, 'CPF é obrigatório.'],
-    unique: true, // Não permite CPFs duplicados
     validate: {
       // Valida se o CPF tem exatamente 11 dígitos numéricos:
       validator: function(v) {

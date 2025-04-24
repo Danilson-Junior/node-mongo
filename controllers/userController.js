@@ -2,51 +2,48 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const User = require('../models/userModel');
 
+// Valida os dados obrigatórios do corpo da requisição
+function validateUserData({ name, email, password }) {
+  if (!name || !email || !password) return 'Preencha todos os campos obrigatórios';
+  return null;
+}
+
+// Verifica se já existe um usuário com o e-mail informado
+async function checkIfEmailExists(email) {
+  const existingUser = await User.findOne({ email });
+  if (existingUser) return 'Email já cadastrado';
+  return null;
+}
+
 const loginUser = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // Verifica se o usuário existe
-    const user = await User.findOne({ email }).select('+password'); // Inclui a senha, pois você a ocultou no schema
+    const user = await User.findOne({ email }).select('+password');
+    if (!user) return res.status(400).json({ message: 'Usuário não encontrado' });
 
-    if (!user) {
-      return res.status(400).json({ message: 'Usuário não encontrado' });
-    }
-
-    // Compara a senha fornecida com a armazenada no banco
     const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(400).json({ message: 'Senha incorreta' });
 
-    if (!isMatch) {
-      return res.status(400).json({ message: 'Senha incorreta' });
-    }
-
-    // Cria o token JWT
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
-    // Retorna o token e o nome do usuário
-    return res.status(200).json({ token, name: user.name });
+    res.status(200).json({ token, name: user.name });
   } catch (error) {
-    console.error('Erro ao fazer login:', error);
-    return res.status(500).json({ message: 'Erro interno do servidor' });
+    res.status(500).json({ message: 'Erro interno do servidor', error: error.message });
   }
 };
 
-
-
-// Buscar um usuário pelo ID
 const getUserById = async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Garante que o usuário só veja os próprios dados
     if (id !== req.user.id.toString()) {
-      return res.status(403).json({ message: 'Você não tem permissão para acessar esses dados' });
+      return res.status(403).json({ message: 'Acesso negado' });
     }
 
     const user = await User.findById(id).select('-password');
-
-    if (!user) {
-      return res.status(404).json({ message: 'Usuário não encontrado' });
-    }
+    if (!user) return res.status(404).json({ message: 'Usuário não encontrado' });
 
     res.json(user);
   } catch (error) {
@@ -54,28 +51,28 @@ const getUserById = async (req, res) => {
   }
 };
 
-// Criar um novo usuário
 const createUser = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    if (!name || !email || !password) {
-      return res.status(400).json({ message: 'Preencha todos os campos obrigatórios' });
-    }
+    const validationError = validateUserData(req.body);
+    if (validationError) return res.status(400).json({ message: validationError });
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(409).json({ message: 'Email já cadastrado' });
-    }
+    const emailError = await checkIfEmailExists(email);
+    if (emailError) return res.status(409).json({ message: emailError });
 
-    // Criptografando a senha antes de salvar
+    // Criptografa a senha antes de salvar
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
     const newUser = new User({ name, email, password: hashedPassword });
     const savedUser = await newUser.save();
 
-    res.status(201).json({ message: 'Usuário criado com sucesso', user: savedUser });
+    // Remove a senha da resposta
+    const userWithoutPassword = savedUser.toObject();
+    delete userWithoutPassword.password;
+
+    res.status(201).json({ message: 'Usuário criado com sucesso', user: userWithoutPassword });
   } catch (error) {
     if (error.name === 'ValidationError') {
       const validationErrors = Object.values(error.errors).map((err) => err.message);
@@ -86,33 +83,27 @@ const createUser = async (req, res) => {
   }
 };
 
-// Atualizar informações de um usuário
 const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
     const { email, password } = req.body;
 
-     // Verifica se o usuário autenticado é o mesmo que está tentando atualizar os dados
-     if (id !== req.user.id.toString()) {
-      return res.status(403).json({ message: 'Você não tem permissão para atualizar esses dados' });
+    // Bloqueia atualização de outro usuário
+    if (id !== req.user.id.toString()) {
+      return res.status(403).json({ message: 'Acesso negado' });
     }
 
     const user = await User.findById(id);
+    if (!user) return res.status(404).json({ message: 'Usuário não encontrado' });
 
-    if (!user) {
-      return res.status(404).json({ message: 'Usuário não encontrado' });
-    }
-
+    // Atualiza e-mail se for diferente e ainda não estiver em uso
     if (email && email !== user.email) {
       const emailExists = await User.findOne({ email });
-
-      if (emailExists) {
-        return res.status(409).json({ message: 'E-mail já está em uso por outro usuário' });
-      }
-
+      if (emailExists) return res.status(409).json({ message: 'E-mail já em uso' });
       user.email = email;
     }
 
+    // Atualiza senha se enviada
     if (password) {
       const salt = await bcrypt.genSalt(10);
       user.password = await bcrypt.hash(password, salt);
@@ -120,7 +111,10 @@ const updateUser = async (req, res) => {
 
     const updatedUser = await user.save();
 
-    res.json({ message: 'Usuário atualizado com sucesso', user: updatedUser });
+    const userWithoutPassword = updatedUser.toObject();
+    delete userWithoutPassword.password;
+
+    res.json({ message: 'Usuário atualizado com sucesso', user: userWithoutPassword });
   } catch (error) {
     if (error.name === 'ValidationError') {
       const validationErrors = Object.values(error.errors).map((err) => err.message);
@@ -131,20 +125,17 @@ const updateUser = async (req, res) => {
   }
 };
 
-// Excluir um usuário
 const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Impede que o usuário exclua outra conta
     if (id !== req.user.id.toString()) {
-      return res.status(403).json({ message: 'Você não tem permissão para excluir sua conta' });
+      return res.status(403).json({ message: 'Acesso negado' });
     }
 
     const deletedUser = await User.findByIdAndDelete(id);
-
-    if (!deletedUser) {
-      return res.status(404).json({ message: 'Usuário não encontrado' });
-    }
+    if (!deletedUser) return res.status(404).json({ message: 'Usuário não encontrado' });
 
     res.json({ message: 'Usuário excluído com sucesso.', user: deletedUser });
   } catch (error) {
