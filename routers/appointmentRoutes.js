@@ -7,6 +7,7 @@ const {
   createAppointment,
   updateAppointment,
   deleteAppointment,
+  getAppointmentsByDateRange,
 } = require('../controllers/appointmentController');
 
 const router = Router();
@@ -18,5 +19,6 @@ router.get('/:id', getAppointmentById);
 router.post('/', createAppointment);
 router.put('/:id', updateAppointment);
 router.delete('/:id', deleteAppointment);
+router.get('/filter', getAppointmentsByDateRange)
 
 module.exports = router;
