@@ -54,6 +54,38 @@ function validateAppointmentData({ clientName, startDate, endDate }) {
   return null;
 }
 
+const getAppointmentsByDateRange = async (req, res) => {
+  try {
+    // 1. Pega as datas da URL
+    const { start, end } = req.query;
+
+    // 2. Verificação simples das datas
+    if (!start || !end) {
+      return res.status(400).json({ error: 'Parâmetros "start" e "end" são obrigatórios' });
+    }
+
+    // 3. Conversão para Date
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+
+    // 4. Busca TODOS os campos dos agendamentos e do cliente
+    const appointments = await Appointment.find({
+      user: req.user.id,
+      startDate: { $lt: endDate },  // Agendamentos que começam antes do fim do período
+      endDate: { $gt: startDate }    // E terminam depois do início do período
+    })
+    .populate('client'); // Sem parâmetros = retorna TODOS os campos do cliente
+
+    // 5. Retorna todos os dados
+    res.json(appointments);
+
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Erro ao buscar agendamentos', err,
+    });
+  }
+};
+
 /**
  * Cria um novo agendamento.
  * 
@@ -241,4 +273,5 @@ module.exports = {
   getAppointmentById,
   updateAppointment,
   deleteAppointment,
+  getAppointmentsByDateRange,
 };
